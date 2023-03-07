@@ -7,7 +7,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import javax.swing.*;
-
 import org.apache.commons.codec.binary.Hex;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttPersistenceException;
@@ -24,13 +23,12 @@ public class GamePanel extends JPanel implements ActionListener{
 	static final int MAX_SNAKE_SIZE = (SCREEN_WIDTH / UNIT_SIZE) * (SCREEN_HEIGHT / UNIT_SIZE);
 	static final int DELAY = 200;
 	static final int INITIAL_SNAKE_SIZE = 10;
-	static final Color[] SNAKE_COLOR = {Color.cyan, Color.green, Color.yellow, Color.red};
+	static final int MAX_NUMBER_OF_PLAYERS = 4;
+	static final Color[] SNAKE_COLOR = {Color.white, Color.cyan, Color.green, Color.yellow, Color.red};
 	boolean execute;
 	int snake_size[];
 	int x[][];
 	int y[][];	
-	int x_initial_this;
-	int y_initial_this;
 	int apple_x;
 	int apple_y;
 	int stats[];
@@ -39,7 +37,9 @@ public class GamePanel extends JPanel implements ActionListener{
 	char direction;
 	MqttBroker protocol;
 	int snake_id;
+	boolean readyToPlay;
 	public GamePanel(){
+		readyToPlay = false;
 		try {
 			protocol = new MqttBroker(this);
 		} catch (MqttSecurityException e) {
@@ -49,42 +49,41 @@ public class GamePanel extends JPanel implements ActionListener{
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}		
-		snake_id = protocol.myId - 1;		
-		execute = true;				
+		snake_id = protocol.myId;		
+		if (protocol.myId <= MAX_NUMBER_OF_PLAYERS)
+			execute = true;
+		else
+			execute = false;
 		timer = new Timer(DELAY,this);		
 		rand = new Random();
 		snakeInit();
-		stats = new int[4];
+		stats = new int[MAX_NUMBER_OF_PLAYERS + 1];
 		generateNewApple();
 		panelInit();				
 		startGame();		
 	}	
 	public void snakeInit() {
-		snake_size = new int[4];
+		snake_size = new int[MAX_NUMBER_OF_PLAYERS + 1];
 		snake_size[snake_id] = INITIAL_SNAKE_SIZE;
-		x = new int[4][MAX_SNAKE_SIZE];
-		y = new int[4][MAX_SNAKE_SIZE];
-		for (int i = 0; i < 4; i++) {
+		x = new int[MAX_NUMBER_OF_PLAYERS + 1][MAX_SNAKE_SIZE];
+		y = new int[MAX_NUMBER_OF_PLAYERS + 1][MAX_SNAKE_SIZE];
+		for (int i = 1; i <= MAX_NUMBER_OF_PLAYERS; i++) {
 			int x_initial, y_initial;
 			switch (i) {
-			case 0:
+			case 1:
 				x_initial = y_initial = 0;
 				break;
-			case 1:
+			case 2:
 				x_initial = (SCREEN_WIDTH / UNIT_SIZE - 1) * UNIT_SIZE;
 				y_initial = 0;
 				break;
-			case 2:
+			case 3:
 				x_initial = (SCREEN_WIDTH / UNIT_SIZE - 1) * UNIT_SIZE;
 				y_initial = (SCREEN_HEIGHT / UNIT_SIZE - 1) * UNIT_SIZE;
 				break;
 			default:
 				x_initial = 0;
 				y_initial = (SCREEN_HEIGHT / UNIT_SIZE - 1) * UNIT_SIZE;
-			}
-			if (snake_id == i) {
-				x_initial_this = x_initial;
-				y_initial_this = y_initial;
 			}
 			for (int j = 0; j < INITIAL_SNAKE_SIZE; j++) {
 				x[i][j] = x_initial;
@@ -93,13 +92,31 @@ public class GamePanel extends JPanel implements ActionListener{
 		}
 		direction = 'N';
 	}
-	public void snakeRestart(){
-		snake_size[snake_id] = INITIAL_SNAKE_SIZE;
-		for (int i = 0; i < snake_size[snake_id]; i++) { 
-			x[snake_id][i] = x_initial_this; 
-			y[snake_id][i] = y_initial_this;		
-		}		
-		direction = 'N';
+	public void snakeRestart(int snakeId){		
+		snake_size[snakeId] = INITIAL_SNAKE_SIZE;
+		int x_initial, y_initial;
+		switch (snakeId) {
+		case 1:
+			x_initial = y_initial = 0;
+			break;
+		case 2:
+			x_initial = (SCREEN_WIDTH / UNIT_SIZE - 1) * UNIT_SIZE;
+			y_initial = 0;
+			break;
+		case 3:
+			x_initial = (SCREEN_WIDTH / UNIT_SIZE - 1) * UNIT_SIZE;
+			y_initial = (SCREEN_HEIGHT / UNIT_SIZE - 1) * UNIT_SIZE;
+			break;
+		default:
+			x_initial = 0;
+			y_initial = (SCREEN_HEIGHT / UNIT_SIZE - 1) * UNIT_SIZE;
+		}
+		for (int i = 0; i < snake_size[snakeId]; i++) { 
+			x[snakeId][i] = x_initial; 
+			y[snakeId][i] = y_initial;		
+		}	
+		if (snakeId == snake_id)
+			direction = 'N';
 	}
 	public void panelInit() {
 		this.setPreferredSize(new Dimension(SCREEN_WIDTH + STATS_SCREEN_WIDTH, SCREEN_HEIGHT));
@@ -109,6 +126,7 @@ public class GamePanel extends JPanel implements ActionListener{
 	}
 	public void startGame() {		
 		timer.start();		
+		readyToPlay = true;
 	}
 	public void sendDisconnectionMessage() throws MqttPersistenceException, MqttException, InterruptedException {
 		protocol.disconnectFromBroker();
@@ -143,7 +161,7 @@ public class GamePanel extends JPanel implements ActionListener{
 			break;
 		}
 		if (checkCollision()) {
-			snakeRestart();
+			snakeRestart(snake_id);
 			return;
 		}
 		if (x[snake_id][0] == apple_x && y[snake_id][0] == apple_y) {			
@@ -183,11 +201,12 @@ public class GamePanel extends JPanel implements ActionListener{
 			g.drawLine(0, i * UNIT_SIZE, SCREEN_WIDTH, i * UNIT_SIZE);
 		g.setColor(Color.red);
 		g.fillOval(apple_x, apple_y, UNIT_SIZE, UNIT_SIZE);							
-		for (int j = 0; j < MqttBroker.MAX_NUMBER_OF_PLAYERS; j++) {			
+		for (int j = 1; j <= MAX_NUMBER_OF_PLAYERS; j++) {			
 			stats[j] = Math.max(stats[j], snake_size[j] - INITIAL_SNAKE_SIZE);			
 			g.setColor(SNAKE_COLOR[j]);
-			for (int i = 0; i < snake_size[j]; i++) 				
-				g.fillRect(x[j][i], y[j][i], UNIT_SIZE, UNIT_SIZE);
+			if (protocol.playerIsOnline[j])
+				for (int i = 0; i < snake_size[j]; i++) 				
+					g.fillRect(x[j][i], y[j][i], UNIT_SIZE, UNIT_SIZE);
 			g.setColor(Color.white);
 			g.setFont( new Font("Arial",Font.BOLD, 18));
 			g.drawString("You are ", SCREEN_WIDTH + MARGIN_SIZE, g.getFont().getSize());
@@ -200,12 +219,12 @@ public class GamePanel extends JPanel implements ActionListener{
 			g.drawString("" + (snake_size[snake_id] - INITIAL_SNAKE_SIZE), SCREEN_WIDTH + 80, g.getFont().getSize() + 40);						
 			g.setColor(SNAKE_COLOR[j]);
 			g.setFont( new Font("Arial",Font.PLAIN, 18));								
-			g.drawString("Player " + (j + 1) + ": " + stats[j], SCREEN_WIDTH + MARGIN_SIZE, g.getFont().getSize() + 150 + 20 * j);
+			g.drawString("Player " + j + ": " + stats[j], SCREEN_WIDTH + MARGIN_SIZE, g.getFont().getSize() + 150 + 20 * j);
 		}
 
 		g.setFont( new Font("Arial",Font.BOLD, 18));
 		int currentLineY = 330;		
-		for (int i = 1; i <= MqttBroker.MAX_NUMBER_OF_PLAYERS; i++) {
+		for (int i = 1; i <= MAX_NUMBER_OF_PLAYERS; i++) {
 			if (protocol.playerIsOnline[i]) {
 				g.setColor(Color.white);
 				g.setFont( new Font("Arial",Font.BOLD, 18));

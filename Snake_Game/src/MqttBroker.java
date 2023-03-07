@@ -74,8 +74,9 @@ public class MqttBroker extends Thread{
 			public void messageArrived(String topic, MqttMessage message) throws Exception {
 				String s = new String(message.getPayload());		
 				if (s.length() > 12 && s.substring(0, 12).compareTo("disconnected") == 0) { 
-					playerIsOnline[Integer.parseInt(s.substring(12, 13))] = false;
-					calculateNumberOfOnlinePlayers();
+					int playerId = Integer.parseInt(s.substring(12, 13));
+					playerIsOnline[playerId] = false;					
+					calculateNumberOfOnlinePlayers();					
 				}
 				else 
 				if (s.length() > 9 && s.substring(0, 9).compareTo("connected") == 0) {					
@@ -88,6 +89,8 @@ public class MqttBroker extends Thread{
 						else 
 							playerConnectionTime[playerId] = LocalDateTime.now().format(myFormatObj);
 					calculateNumberOfOnlinePlayers();
+					if (gamePanel.readyToPlay && playerId != myId)
+						gamePanel.snakeRestart(playerId);
 				}
 				else					
 				if (s.compareTo("ping") == 0) {					
@@ -95,13 +98,13 @@ public class MqttBroker extends Thread{
 						publishMessage("connected" + Integer.toString(myId) + playerConnectionTime[myId]);
 				}								
 				else {					
-					if (myId == 0)
+					if (!gamePanel.readyToPlay)
 						return;
 					ByteArrayInputStream in = new ByteArrayInputStream(Hex.decodeHex(s.toCharArray()));
 				    int[] data = (int[]) new ObjectInputStream(in).readObject();				    
 				    int another_snake_id = data[data.length - 1];				
 				    gamePanel.snake_size[another_snake_id] = data.length / 2;
-				    if (myId == another_snake_id + 1)
+				    if (myId == another_snake_id)
 						return;				    
 				    for (int i = 0; i < data.length / 2; i++) {				    	
 				    	gamePanel.x[another_snake_id][i] = data[i];
@@ -137,7 +140,7 @@ public class MqttBroker extends Thread{
 			@Override
 			public void run() {
 				MqttMessage message = new MqttMessage(data.getBytes());
-				for (int i = 1; i <= 4; i++)
+				for (int i = 1; i <= MAX_NUMBER_OF_PLAYERS; i++)
 					if (i != myId)
 						if (i == 1)
 							try {

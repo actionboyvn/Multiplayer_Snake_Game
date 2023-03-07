@@ -22,7 +22,6 @@ public class SnakeGame extends JFrame{
 		try {
 			gamePanel.sendDisconnectionMessage();
 		} catch (MqttException | InterruptedException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		super.dispose();
